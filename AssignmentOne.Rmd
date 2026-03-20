@@ -37,7 +37,7 @@ library(corrplot)
 Loading Dataset:
 ```{r}
 #Breast Cancer Wisconsin (Diagnostic)
-#BCWdata <- read.csv("C:wisconsin_dbc.csv")
+BCWdata <- read.csv("C:wisconsin_dbc.csv")
 ```
 Review Dataset: 
 ```{r}
