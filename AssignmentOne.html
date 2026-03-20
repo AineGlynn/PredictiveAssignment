@@ -13,7 +13,7 @@
 
 <meta name="date" content="2026-03-05" />
 
-<title>BCW</title>
+<title>Breast Cancer Wisconsin Dataset</title>
 
 <script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
 // be compatible with the behavior of Pandoc < 2.8).
@@ -574,7 +574,7 @@ display: none;
 
 
 
-<h1 class="title toc-ignore">BCW</h1>
+<h1 class="title toc-ignore">Breast Cancer Wisconsin Dataset</h1>
 <h4 class="author">Aine</h4>
 <h4 class="date">2026-03-05</h4>
 
@@ -1275,52 +1275,6 @@ step.AUC</code></pre>
 ##   1.45939334 253.01565442   0.00000000  -0.38459414   0.02325581           NA 
 ##        Slope         Emax Brier scaled         Eavg          ECI 
 ##   0.10629210   0.59273810   0.89680516   0.02325581   0.09101744</code></pre>
-<pre class="r"><code>STEP &lt;- data.frame(Model = c(&quot;Brier Score&quot;, &#39;Accuracy Score&#39;, &#39;Area Under the Curve&#39;), STEP = c(step_Brier,Accuracy.step,step.AUC))
-
-STEP %&gt;%
-  kable(caption = &quot;Stepwise Subset Selection&quot;, digits = 3) %&gt;%
-  kable_styling(full_width = FALSE, bootstrap_options = c(&quot;striped&quot;, &quot;hover&quot;))</code></pre>
-<table class="table table-striped table-hover" style="width: auto !important; margin-left: auto; margin-right: auto;">
-<caption>
-Stepwise Subset Selection
-</caption>
-<thead>
-<tr>
-<th style="text-align:left;">
-Model
-</th>
-<th style="text-align:right;">
-STEP
-</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align:left;">
-Brier Score
-</td>
-<td style="text-align:right;">
-0.023
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-Accuracy Score
-</td>
-<td style="text-align:right;">
-0.977
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-Area Under the Curve
-</td>
-<td style="text-align:right;">
-0.978
-</td>
-</tr>
-</tbody>
-</table>
 </div>
 <div id="ridge-regression" class="section level2">
 <h2>Ridge Regression:</h2>
@@ -1737,6 +1691,121 @@ plsda.AUC</code></pre>
 ##    0.5867494  102.9209037    0.0000000    0.4745627    0.1169014   -0.4280337 
 ##        Slope         Emax Brier scaled         Eavg          ECI 
 ##    8.6409640    0.4062775    0.4812641    0.2759094    8.3363382</code></pre>
+</div>
+<div id="assessment" class="section level2">
+<h2>Assessment:</h2>
+<pre class="r"><code>results &lt;- data.frame(
+  Model = c(&quot;Linear Regression&quot;, &quot;Best SUbset&quot;, &quot;Ridge Model&quot;, &quot;Lasso Model&quot;, &#39;PCA Model&#39;),  Accuracy = round(c(GLM.Accuracy,Accuracy.step, Accuracy.Ridge, Accuracy.lasso, Accuracy.plsda), 3),
+  Brier = round(c(GLM_Brier, step_Brier, Ridge_Brier, lasso_Brier, plsda_Brier), 3),
+  AUC = round(c(GLM.AUC,step.AUC, Ridge.AUC, lasso.AUC, plsda.AUC), 3)
+)
+
+best_accuracy &lt;- which.max(results$Accuracy)
+best_brier    &lt;- which.min(results$Brier)      
+best_auc      &lt;- which.max(results$AUC)
+
+results %&gt;%
+  kable(caption = &quot;Accuracy, Brier &amp; AUC&quot;) %&gt;%
+  kable_styling(bootstrap_options = c(&quot;striped&quot;, &quot;hover&quot;),full_width = FALSE,position = &quot;center&quot;) %&gt;%
+  column_spec(2, bold = ifelse(1:nrow(results) == best_accuracy, TRUE, FALSE),
+              background = ifelse(1:nrow(results) == best_accuracy, &quot;#c6efce&quot;, &quot;white&quot;)) %&gt;%
+  column_spec(3, bold = ifelse(1:nrow(results) == best_brier, TRUE, FALSE),
+              background = ifelse(1:nrow(results) == best_brier, &quot;#c6efce&quot;, &quot;white&quot;)) %&gt;%
+  column_spec(4, bold = ifelse(1:nrow(results) == best_auc, TRUE, FALSE),
+              background = ifelse(1:nrow(results) == best_auc, &quot;#c6efce&quot;, &quot;white&quot;))</code></pre>
+<table class="table table-striped table-hover" style="width: auto !important; margin-left: auto; margin-right: auto;">
+<caption>
+Accuracy, Brier &amp; AUC
+</caption>
+<thead>
+<tr>
+<th style="text-align:left;">
+Model
+</th>
+<th style="text-align:right;">
+Accuracy
+</th>
+<th style="text-align:right;">
+Brier
+</th>
+<th style="text-align:right;">
+AUC
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left;">
+Linear Regression
+</td>
+<td style="text-align:right;background-color: white !important;">
+0.965
+</td>
+<td style="text-align:right;background-color: white !important;">
+0.035
+</td>
+<td style="text-align:right;background-color: white !important;">
+0.965
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+Best SUbset
+</td>
+<td style="text-align:right;background-color: white !important;">
+0.977
+</td>
+<td style="text-align:right;background-color: white !important;">
+0.023
+</td>
+<td style="text-align:right;background-color: white !important;">
+0.978
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+Ridge Model
+</td>
+<td style="text-align:right;background-color: white !important;">
+0.965
+</td>
+<td style="text-align:right;font-weight: bold;background-color: rgba(198, 239, 206, 255) !important;">
+0.019
+</td>
+<td style="text-align:right;font-weight: bold;background-color: rgba(198, 239, 206, 255) !important;">
+0.999
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+Lasso Model
+</td>
+<td style="text-align:right;font-weight: bold;background-color: rgba(198, 239, 206, 255) !important;">
+0.983
+</td>
+<td style="text-align:right;background-color: white !important;">
+0.019
+</td>
+<td style="text-align:right;background-color: white !important;">
+0.999
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+PCA Model
+</td>
+<td style="text-align:right;background-color: white !important;">
+0.616
+</td>
+<td style="text-align:right;background-color: white !important;">
+0.117
+</td>
+<td style="text-align:right;background-color: white !important;">
+0.993
+</td>
+</tr>
+</tbody>
+</table>
 </div>
 <div id="linear-discriminant-analysis" class="section level2">
 <h2>Linear Discriminant Analysis:</h2>

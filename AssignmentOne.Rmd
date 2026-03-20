@@ -1,5 +1,5 @@
 ---
-title: "BCW"
+title: "Breast Cancer Wisconsin Dataset"
 author: "Aine"
 date: "2026-03-05"
 output: html_document
@@ -37,7 +37,7 @@ library(corrplot)
 Loading Dataset:
 ```{r}
 #Breast Cancer Wisconsin (Diagnostic)
-BCWdata <- read.csv("C:wisconsin_dbc.csv")
+BCWdata <- read.csv("wisconsin_dbc.csv")
 ```
 Review Dataset: 
 ```{r}
@@ -146,14 +146,6 @@ valProbggplot(step.probs, V2.test)
 ```
 
 
-```{r}
-STEP <- data.frame(Model = c("Brier Score", 'Accuracy Score', 'Area Under the Curve'), STEP = c(step_Brier,Accuracy.step,step.AUC))
-
-STEP %>%
-  kable(caption = "Stepwise Subset Selection", digits = 3) %>%
-  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover"))
-```
-
 ## Ridge Regression: 
 ```{r}
 set.seed(123)
@@ -184,7 +176,6 @@ Accuracy.Ridge
 ```
 ROC Curve:
 ```{r}
-
 roc_obj.ridge <- roc(V2.test, ridge.probs)
 plot(roc_obj.ridge, type = "s")
 Ridge.AUC = auc(roc_obj.ridge)
@@ -284,6 +275,29 @@ Calibration Plot:
 plsda.calplot<-valProbggplot(prob_M, Ytest_numeric)
 plsda.calplot
 ```
+## Assessment: 
+```{r}
+results <- data.frame(
+  Model = c("Linear Regression", "Best SUbset", "Ridge Model", "Lasso Model", 'PCA Model'),  Accuracy = round(c(GLM.Accuracy,Accuracy.step, Accuracy.Ridge, Accuracy.lasso, Accuracy.plsda), 3),
+  Brier = round(c(GLM_Brier, step_Brier, Ridge_Brier, lasso_Brier, plsda_Brier), 3),
+  AUC = round(c(GLM.AUC,step.AUC, Ridge.AUC, lasso.AUC, plsda.AUC), 3)
+)
+
+best_accuracy <- which.max(results$Accuracy)
+best_brier    <- which.min(results$Brier)      
+best_auc      <- which.max(results$AUC)
+
+results %>%
+  kable(caption = "Accuracy, Brier & AUC") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"),full_width = FALSE,position = "center") %>%
+  column_spec(2, bold = ifelse(1:nrow(results) == best_accuracy, TRUE, FALSE),
+              background = ifelse(1:nrow(results) == best_accuracy, "#c6efce", "white")) %>%
+  column_spec(3, bold = ifelse(1:nrow(results) == best_brier, TRUE, FALSE),
+              background = ifelse(1:nrow(results) == best_brier, "#c6efce", "white")) %>%
+  column_spec(4, bold = ifelse(1:nrow(results) == best_auc, TRUE, FALSE),
+              background = ifelse(1:nrow(results) == best_auc, "#c6efce", "white"))
+```
+
 ## Linear Discriminant Analysis:
 ```{r}
 lda.fit <- lda(malignant ~., data = BCW, subset = train.BCW)
