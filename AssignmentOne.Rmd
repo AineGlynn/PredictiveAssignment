@@ -10,6 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 Loading Libraries: 
 ```{r, include=FALSE}
+library(psych)
 library(BART)
 library(tree)
 library(dcurves)
@@ -40,7 +41,7 @@ library(corrplot)
 Loading Dataset:
 ```{r}
 #Breast Cancer Wisconsin (Diagnostic)
-BCWdata <- read.csv("wisconsin_dbc.csv")
+BCWdata <- read.csv("C:/Users/aineg/OneDrive - TNS Capital/Aine Folder/HealthDataScience/Semester Two/Predictive Modelling and Statistical Learning/Predictive Assignment/wisconsin_dbc.csv")
 ```
 Review Dataset: 
 ```{r}
@@ -75,7 +76,6 @@ correlation %>%
 ```
 Assessing for Extreme Values: 
 ```{r}
-library(psych) 
 desc <- describe(BCW, fast = TRUE)
 desc[ , c("min", "max", "mean", "median", "range")]
 ```
@@ -219,3 +219,772 @@ Calibration Plot:
 Ridge.calplot<-valProbggplot(ridge.probs, V2.test)
 Ridge.calplot
 ```
+## Lasso Model: 
+```{r}
+set.seed(321321)
+lasso.mod<-glmnet(x[train.BCW,], y[train.BCW], alpha = 1, family = binomial)
+cv.out <- cv.glmnet(x[train.BCW, ], y[train.BCW], alpha = 1, family = binomial)
+plot(cv.out)
+bestlam <- cv.out$lambda.min #May prefer 1-SE not minimum but here minimum.
+bestlam
+#cv.out$lambda.1se
+Kept <- coef(cv.out, s = "lambda.min")
+Kept[Kept[,1] != 0, ]
+```
+Brier's Score:
+```{r}
+lasso.probs <- predict(lasso.mod, s = bestlam,newx = x[!train.BCW, ], type = "response")
+lasso_Brier = brier_score(V2.test, lasso.probs)#Ensure factors are 1 & 0. 
+lasso_Brier
+```
+Confusion Matrix & Accuracy Score: 
+```{r}
+BCW.lasso.pred <- rep(0, nrow(BCW.test)) #size of the test set.
+BCW.lasso.pred[lasso.probs > .3] <- 1 #.3threshold for classification
+table(BCW.lasso.pred, V2.test)
+Accuracy.lasso = mean(BCW.lasso.pred == V2.test)
+Accuracy.lasso
+```
+Roc Curve:
+```{r}
+roc_obj.lasso <- roc(V2.test, as.vector(lasso.probs))
+plot(roc_obj.lasso, type = "s")
+lasso.AUC = auc(roc_obj.lasso)
+lasso.AUC
+```
+Calibration Plot: 
+```{r}
+lasso.calplot<-valProbggplot(lasso.probs, V2.test)
+lasso.calplot
+```
+Matrix Test/ Train: 
+```{r}
+set.seed(123)
+standardized.X <- scale(BCW[, names(BCW) != "malignant"]) #standardize & sure malignant isnt 
+Y <- as.factor(BCW$malignant)#y must be a factor in PCA
+X <- standardized.X[train.BCW, ]
+XTest <- standardized.X[!train.BCW, ]
+Ytrain <- Y[train.BCW]
+Ytest <- Y[!train.BCW]
+Ytest_numeric = as.numeric(as.character(Ytest)) #going factor-numeric causes it to fail
+Ytrain_numeric = as.numeric(as.character(Ytrain))
+```
+
+## PLS-DA Approach: 
+```{r}
+plsda.fit <- plsda(X, Ytrain, cv = TRUE)
+validationplot(plsda.fit, val.type = "MSEP")
+```
+Brier's Score
+```{r}
+plsda.fit <- plsda(X, Ytrain, ncomp = 1)
+plsda.probs <- predict(plsda.fit, newdata = XTest, type = "prob")
+
+prob_M <- plsda.probs[, "1", 1]
+Ytest_numeric <- as.numeric(as.character(Ytest))#becuase made y a factor back to numeric
+
+plsda_Brier <- brier_score(Ytest_numeric, prob_M)
+plsda_Brier
+```
+Confusion Matrix & Accuracy Score:
+```{r}
+BCW.plsda.pred <- rep(0, length(prob_M))
+BCW.plsda.pred[prob_M > 0.3] <- 1
+table(BCW.plsda.pred, Ytest)
+Accuracy.plsda = mean(BCW.plsda.pred == Ytest)
+Accuracy.plsda
+```
+
+Roc Curve: 
+```{r}
+roc_obj.plsda <- roc(Ytest_numeric, prob_M)
+plot(roc_obj.plsda, type = "s")
+plsda.AUC = auc(roc_obj.plsda)
+plsda.AUC
+```
+Calibration Plot: 
+```{r}
+plsda.calplot<-valProbggplot(prob_M, Ytest_numeric)
+plsda.calplot
+```
+## Assessment: 
+```{r}
+results <- data.frame(
+  Model = c("Logistic Regression", "Best Subset", "Ridge Model", "Lasso Model", 'PLS-DA Model'),  Accuracy = round(c(GLM.Accuracy,Accuracy.step, Accuracy.Ridge, Accuracy.lasso, Accuracy.plsda), 3),
+  Brier = round(c(GLM_Brier, step_Brier, Ridge_Brier, lasso_Brier, plsda_Brier), 3),
+  AUC = round(c(GLM.AUC,step.AUC, Ridge.AUC, lasso.AUC, plsda.AUC), 3)
+)
+#To get the highlighted colours: %in% -this is important 
+best_accuracy <- which(results$Accuracy == max(results$Accuracy))
+best_brier    <- which(results$Brier == min(results$Brier))
+best_auc      <- which(results$AUC == max(results$AUC))
+
+
+results %>%
+  kable(caption = "Accuracy, Brier & AUC") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), 
+                full_width = FALSE, position = "center") %>%
+  column_spec(2, 
+              bold = 1:nrow(results) %in% best_accuracy,
+              background = ifelse(1:nrow(results) %in% best_accuracy, 
+                                  "#c6efce", "white")) %>%
+  column_spec(3, 
+              bold = 1:nrow(results) %in% best_brier,
+              background = ifelse(1:nrow(results) %in% best_brier, 
+                                  "#c6efce", "white")) %>%
+  column_spec(4, 
+              bold = 1:nrow(results) %in% best_auc,
+              background = ifelse(1:nrow(results) %in% best_auc, 
+                                  "#c6efce", "white"))
+```
+Roc Curves: 
+```{r}
+plot(roc_obj.glm, type = "s", col = "blue",main = "ROC Curves — Classification Models",xlab = "False Positive Rate (1 - Specificity)", ylab = "True Positive Rate (Sensitivity)")
+lines(roc_obj.step, type = "s", col = "maroon") 
+lines(roc_obj.ridge, type = "s", col = "purple")
+lines(roc_obj.lasso, type = "s", col = "navy")
+lines(roc_obj.plsda, type = "s", col = "goldenrod")
+
+legend("bottomright",
+       legend = c("Logistic", "Stepwise", "Ridge", "Lasso", "PLS-DA"),
+       col = c("blue", "maroon", "purple", "navy", "goldenrod"),
+       lwd = 2,cex = 0.8)
+```
+
+
+Calibration Curves & Info: 
+```{r}
+
+grid.arrange(
+  glm.calplot$ggPlot + ggtitle("Logistic Regression"),
+  step.calplot$ggPlot + ggtitle("Best Subset"),
+  Ridge.calplot$ggPlot + ggtitle("Ridge Model"),
+  lasso.calplot$ggPlot + ggtitle("Lasso Model"),
+  plsda.calplot$ggPlot + ggtitle('PLS-DA Model'),
+  ncol = 3
+)
+
+cal.results <- data.frame(
+  Model = c("Logistic Regression", "Best Subset", "Ridge Model", "Lasso Model", 'PLS-DA Model'),
+  Cal.Intercept = round(c(
+    glm.calplot$stats["Intercept"],
+    step.calplot$stats["Intercept"],
+    Ridge.calplot$stats["Intercept"],
+    lasso.calplot$stats["Intercept"],
+    plsda.calplot$stats["Intercept"]), 3),
+  Cal.Slope = round(c(
+    glm.calplot$stats["Slope"],
+    step.calplot$stats["Slope"],
+    Ridge.calplot$stats["Slope"],
+    lasso.calplot$stats["Slope"],
+    plsda.calplot$stats["Slope"]), 3)
+)
+best_intercept <- which.min(abs(cal.results$Cal.Intercept - 0))
+best_slope <- which.min(abs(cal.results$Cal.Slope - 1)) 
+
+cal.results %>%
+  kable(caption = "Calibration")%>%
+   column_spec(2, bold = ifelse(1:nrow(cal.results) == best_intercept, TRUE, FALSE),
+              background = ifelse(1:nrow(cal.results) == best_intercept, "#c6efce", "white")) %>%
+  column_spec(3, bold = ifelse(1:nrow(cal.results) == best_slope, TRUE, FALSE),
+              background = ifelse(1:nrow(cal.results) == best_slope, "#c6efce", "white")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"),full_width = FALSE,      position = "center")
+```
+
+
+## Linear Discriminant Analysis:
+```{r}
+lda.fit <- lda(malignant ~., data = BCW, subset = train.BCW)
+lda.pred <- predict(lda.fit, BCW.test)
+lda.class <- lda.pred$class
+lda.probs <- lda.pred$posterior
+prob_M <- lda.probs[, 2]
+```
+Brier's Score: 
+```{r}
+lda_Brier <- brier_score(V2.test, prob_M)
+lda_Brier
+```
+
+Confusion Matrix & Accuracy Score:
+```{r}
+BCW.lda.pred <- rep(0, nrow(BCW.test)) #size of the test set.
+BCW.lda.pred[prob_M > .3] <- 1 
+table(BCW.lda.pred, V2.test)
+Accuracy.lda = mean(BCW.lda.pred == V2.test)
+Accuracy.lda
+```
+
+Roc Curve:
+```{r}
+roc_obj.lda <- roc(V2.test, prob_M)
+plot(roc_obj.lda, type = "s")
+lda.AUC = auc(roc_obj.lda)
+lda.AUC
+```
+Calibration Plot: 
+```{r}
+lda.calplot<-valProbggplot(prob_M, V2.test)
+lda.calplot
+```
+## Naive Bayes
+```{r}
+nb.fit <- naiveBayes(as.factor(malignant) ~ ., data = BCW, subset = train.BCW) #TEST/ TRAIN SPLIT
+class(BCW$malignant)
+```
+Brier's Score:
+```{r}
+nb.pred <- predict(nb.fit, BCW.test, type = "raw")  #again predicted on the test set 
+nb.probs <- nb.pred[, 2]#extracts column of probability=malignant 
+NB_Brier = brier_score(V2.test, nb.probs)#Ensure factors are 1 & 0. 
+NB_Brier
+colnames(nb.pred)
+
+```
+
+Confusion Matrix & Accuracy: 
+```{r}
+nb.class= rep(0, nrow(BCW.test))  
+nb.class[nb.probs > 0.3] = 1  
+nb.class <- factor(nb.class, levels = c(0,1))   
+table(nb.class, V2.test)
+NB.Accuracy <- mean(nb.class == V2.test)
+NB.Accuracy
+```
+
+Roc Curve:
+```{r}
+roc_obj.NB <- roc(V2.test, nb.probs)
+plot(roc_obj.NB, type = "s", col = "blue")
+
+NB.AUC = auc(roc_obj.NB)
+NB.AUC
+```
+
+Calibration Curve: 
+```{r}
+NB.calplot = valProbggplot(nb.probs, V2.test)
+NB.calplot
+```
+## K-NN
+```{r}
+set.seed(123)
+k.values <- 1:20 #k can be 1 to 20
+cv.error <- rep(NA, 20) #stores misclassification error
+for(i in k.values){
+  pred <- knn.cv(train = X,cl = Ytrain,k = i) #leave-one-out CV 
+  cv.error[i] <- mean(pred != Ytrain) #stores misclassification erro
+}
+best.k <- which.min(cv.error)
+best.k
+```
+Brier Score: 
+```{r}
+knn.fit <- knn(X, XTest, Ytrain, k = best.k, prob = TRUE)
+knn.probs <- attr(knn.fit, "prob") #knn for classification couldnt use predict? 
+prob_M <- ifelse(knn.fit == 1, knn.probs, 1 - knn.probs)
+knn_Brier = brier_score(Ytest_numeric, prob_M)
+knn_Brier
+```
+Accuracy & Confusion Matrix:
+```{r}
+knn.class= rep(0, nrow(BCW.test))  
+knn.class[prob_M > 0.3] = 1  
+table(knn.class, Ytest_numeric)
+knn.Accuracy = mean(knn.class==Ytest_numeric)
+knn.Accuracy
+```
+Roc Curve:
+```{r}
+roc_obj.knn<- roc(Ytest_numeric, prob_M)
+plot(roc_obj.knn, type = 's')
+knn.AUC = auc(roc_obj.knn)
+knn.AUC
+```
+Calibration Curve: 
+```{r}
+knn.calplot<-valProbggplot(prob_M, Ytest_numeric)
+knn.calplot 
+```
+
+## Assessment: 
+```{r}
+results <- data.frame(
+  Model = c("Linear Discriminat Analysis", 'Naive Bayes', 'K-NN'),  Accuracy = round(c(Accuracy.lda,NB.Accuracy, knn.Accuracy), 3),
+  Brier = round(c(lda_Brier, NB_Brier, knn_Brier), 3),
+  AUC = round(c(lda.AUC,NB.AUC, knn.AUC), 3)
+)
+#To get the highlighted colours: %in% -this is important 
+best_accuracy <- which(results$Accuracy == max(results$Accuracy))
+best_brier    <- which(results$Brier == min(results$Brier))
+best_auc      <- which(results$AUC == max(results$AUC))
+
+
+results %>%
+  kable(caption = "Accuracy, Brier & AUC") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), 
+                full_width = FALSE, position = "center") %>%
+  column_spec(2, 
+              bold = 1:nrow(results) %in% best_accuracy,
+              background = ifelse(1:nrow(results) %in% best_accuracy, 
+                                  "#c6efce", "white")) %>%
+  column_spec(3, 
+              bold = 1:nrow(results) %in% best_brier,
+              background = ifelse(1:nrow(results) %in% best_brier, 
+                                  "#c6efce", "white")) %>%
+  column_spec(4, 
+              bold = 1:nrow(results) %in% best_auc,
+              background = ifelse(1:nrow(results) %in% best_auc, 
+                                  "#c6efce", "white"))
+```
+Roc Curves: 
+```{r}
+plot(roc_obj.lda, type = "s", col = "blue",main = "ROC Curves — Classification Models",xlab = "False Positive Rate (1 - Specificity)", ylab = "True Positive Rate (Sensitivity)")
+lines(roc_obj.NB, type = "s", col = "maroon") 
+lines(roc_obj.knn, type = "s", col = "purple")
+
+
+legend("bottomright",
+       legend = c("Linear Discriminat Analysis", 'Naive Bayes', 'K-NN'),
+       col = c("blue", "maroon", "purple"),
+       lwd = 2,cex = 0.8)
+```
+
+
+Calibration Curves & Info: 
+```{r}
+
+grid.arrange(
+  lda.calplot$ggPlot + ggtitle("Linear Discriminat Analysis"),
+  NB.calplot$ggPlot + ggtitle("Naive Bayes"),
+  knn.calplot$ggPlot + ggtitle("K-NN"),
+  ncol = 3
+)
+
+cal.results <- data.frame(
+  Model = c("Linear Discriminat Analysis", 'Naive Bayes', 'K-NN'),
+  Cal.Intercept = round(c(
+    lda.calplot$stats["Intercept"],
+    NB.calplot$stats["Intercept"],
+    knn.calplot$stats["Intercept"]), 3),
+  Cal.Slope = round(c(
+    lda.calplot$stats["Slope"],
+    NB.calplot$stats["Slope"],
+    knn.calplot$stats["Slope"]), 3)
+)
+best_intercept <- which.min(abs(cal.results$Cal.Intercept - 0))
+best_slope <- which.min(abs(cal.results$Cal.Slope - 1)) 
+
+cal.results %>%
+  kable(caption = "Calibration")%>%
+   column_spec(2, bold = ifelse(1:nrow(cal.results) == best_intercept, TRUE, FALSE),
+              background = ifelse(1:nrow(cal.results) == best_intercept, "#c6efce", "white")) %>%
+  column_spec(3, bold = ifelse(1:nrow(cal.results) == best_slope, TRUE, FALSE),
+              background = ifelse(1:nrow(cal.results) == best_slope, "#c6efce", "white")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"),full_width = FALSE,      position = "center")
+```
+## Tree
+```{r}
+set.seed(555)
+tree.BCW <- tree(as.factor(malignant)~ . , BCW, subset =train.BCW)
+cv.BCW <- cv.tree(tree.BCW, FUN = prune.misclass)
+best <- cv.BCW$size[which.min(cv.BCW$dev)]
+best
+prune.fit<- prune.misclass(tree.BCW, best = best)
+summary(prune.fit)
+plot(prune.fit)
+text(prune.fit, pretty = 0)
+```
+Brier Score:
+```{r}
+prune.probs <- predict(prune.fit, newdata = BCW[!train.BCW, ], type = "vector")
+prob_M <- prune.probs[, 2]
+prune_Brier <- brier_score(V2.test, prob_M)
+prune_Brier 
+```
+Accuracy & Confusion Matrix: 
+```{r}
+prune.class <- predict(prune.fit, BCW[!train.BCW, ],type = "class")
+table(prune.class, V2.test)
+tree.Accuracy <- mean(prune.class == V2.test.factor)
+tree.Accuracy
+```
+ROC Curve: 
+```{r}
+roc_obj.tree<- roc(V2.test, prob_M)
+plot(roc_obj.tree, type = 's')
+tree.AUC = auc(roc_obj.tree)
+tree.AUC
+```
+Calibration Plot: 
+```{r}
+tree.calplot<-valProbggplot(prob_M, V2.test)
+tree.calplot
+```
+
+## Random Forest: 
+CV for m: 
+```{r}
+set.seed(321)
+mtry.values <- c(2, 5, 8, 10, 15)
+
+mtry.errors <- sapply(mtry.values, function(m){
+  fit <- randomForest(as.factor(malignant) ~., data = BCW[train.BCW, ], mtry = m, ntree = 500)
+  return(fit$err.rate[500, "OOB"])  
+})
+
+best.mtry <- mtry.values[which.min(mtry.errors)]
+best.mtry
+rf.fit <- randomForest(as.factor(malignant) ~ ., data = BCW, subset =train.BCW, mtry = best.mtry, importance = TRUE)
+```
+Brier Score: 
+```{r}
+rf.probs <- predict(rf.fit, newdata = BCW.test, type = "prob")
+prob_M <- rf.probs[, 2]
+rf_Brier <- brier_score(V2.test, prob_M)
+rf_Brier
+```
+Accuracy & Confusion Matrix:
+```{r}
+rf.class= rep(0, nrow(BCW.test))  
+rf.class[prob_M > 0.3] = 1
+rf.class = factor(rf.class, levels = c(0,1))
+table(rf.class, V2.test)
+rf.Accuracy = mean(rf.class==V2.test)
+rf.Accuracy
+```
+
+Roc Curve:
+```{r}
+roc_obj.rf<- roc(V2.test, prob_M)
+plot(roc_obj.rf, type = 's')
+rf.AUC = auc(roc_obj.rf)
+rf.AUC
+```
+Calibration Curve: 
+```{r}
+rf.calplot<-valProbggplot(prob_M, V2.test)
+rf.calplot 
+```
+## Boosting:
+I trialed different Boosting Models:
+with different number of trees, different shrinkage and different interaction depths. 
+```{r}
+set.seed(321)
+boost.fit1000 <- gbm(malignant ~., data = BCW[train.BCW, ],distribution = "bernoulli",n.trees = 1000,interaction.depth = 4,shrinkage = 0.01,cv.folds = 5)
+
+best.trees <- gbm.perf(boost.fit1000, method = "cv")
+best.trees
+```
+Shrinkage:
+```{r}
+set.seed(321)
+shrinkage.values <- c(0.001, 0.01, 0.05, 0.1, 0.2) 
+
+shrinkage.errors <- sapply(shrinkage.values, function(s){
+  fit <- gbm(malignant ~ ., data = BCW[train.BCW, ], distribution = "bernoulli", n.trees = 585,    interaction.depth = 4,shrinkage = s, cv.folds = 5) 
+  return(min(fit$cv.error))       
+})
+
+best.shrinkage <- shrinkage.values[which.min(shrinkage.errors)]
+best.shrinkage
+```
+Interaction Depth: 
+```{r}
+set.seed(321)
+id <- c(2, 3, 4, 5) 
+
+depth.errors <- sapply(id, function(d){
+  fit <- gbm(malignant ~ ., data = BCW[train.BCW, ], distribution = "bernoulli", n.trees = 585,    interaction.depth = d,shrinkage = 0.2, cv.folds = 5)
+  return(min(fit$cv.error))
+})
+
+best.depth <- id[which.min(depth.errors)]
+best.depth
+```
+Brier Score: 
+```{r}
+boost.fit <- gbm(malignant ~ ., data = BCW[train.BCW, ], distribution = "bernoulli", n.trees = best.trees,    interaction.depth = best.depth,shrinkage = best.shrinkage) #optimum fit
+
+boost.probs <- predict(boost.fit, newdata = BCW.test, type = "response") #vector of probs 
+boost_Brier <- brier_score(V2.test, boost.probs)
+boost_Brier
+```
+Accuracy & Confusion Matrix:
+```{r}
+boost.class= rep(0, nrow(BCW.test))  
+boost.class[boost.probs > 0.3] = 1  
+boost.class = factor(boost.class, levels = c(0, 1))
+table(boost.class, V2.test)
+boost.Accuracy = mean(boost.class==V2.test)
+boost.Accuracy
+```
+
+Roc Curve:
+```{r}
+roc_obj.boost<- roc(V2.test, boost.probs)
+plot(roc_obj.boost, type = 's')
+boost.AUC = auc(roc_obj.boost)
+boost.AUC
+```
+Calibration Curve: 
+```{r}
+boost.calplot<-valProbggplot(boost.probs, V2.test)
+boost.calplot 
+```
+## Bayesian Additive Regression Trees
+```{r}
+set.seed(555)
+xbart_result <- xbart(X, Ytrain_numeric, n.trees = c(50, 75, 100, 200), method = "k-fold", n.reps = 10)
+best.ntree <- c(50, 75, 100, 200)[which.min(colMeans(xbart_result))]
+best.ntree
+```
+Fit:
+```{r}
+set.seed(321)
+bart.fit <- bart(X, Ytrain_numeric,x.test = XTest,ntree = best.ntree,ndpost = 500,nskip = 100,keeptrees = FALSE, verbose = FALSE)
+bart.fit2 <- bart(X, Ytrain_numeric,x.test = XTest,ntree = best.ntree,ndpost = 1000,nskip = 500,keeptrees = FALSE, verbose = FALSE)
+bart.fit3 <- bart(X, Ytrain_numeric,x.test = XTest,ntree = best.ntree,ndpost = 2000,nskip = 1000,keeptrees = FALSE, verbose = FALSE)
+# yhat.test is a matrix of draws — need to take mean
+prob1 <- pnorm(colMeans(bart.fit$yhat.test))
+prob2 <- pnorm(colMeans(bart.fit2$yhat.test))
+prob3 <- pnorm(colMeans(bart.fit3$yhat.test))
+Brier1 <- brier_score(Ytest_numeric, prob1)
+Brier2 <- brier_score(Ytest_numeric, prob2)
+Brier3 <- brier_score(Ytest_numeric, prob3)
+Brier1
+Brier2
+Brier3
+bart_Brier =Brier2
+prob_M = prob2
+```
+Accuracy & Confusion Matrix:
+```{r}
+bart.class <- factor(ifelse(prob_M > 0.5, 1, 0), levels = c(0, 1))
+table(bart.class, V2.test)
+Accuracy.bart <- mean(bart.class == V2.test.factor)
+Accuracy.bart
+```
+
+Roc Curve:
+```{r}
+roc_obj.bart<- roc(V2.test, prob_M)
+plot(roc_obj.bart, type = 's')
+bart.AUC = auc(roc_obj.bart)
+bart.AUC
+```
+Calibration Curve: 
+```{r}
+bart.calplot<-valProbggplot(prob_M, V2.test)
+bart.calplot 
+```
+## Assessment: 
+```{r}
+results <- data.frame(
+  Model = c("Tree", "Random Forest", 'Boosting', 'BART'),  Accuracy = round(c(tree.Accuracy, rf.Accuracy,boost.Accuracy, Accuracy.bart), 3),
+  Brier = round(c(prune_Brier, rf_Brier, boost_Brier, bart_Brier), 3),
+  AUC = round(c(tree.AUC, rf.AUC,boost.AUC, bart.AUC), 3)
+)
+#To get the highlighted colours: %in% -this is important 
+best_accuracy <- which(results$Accuracy == max(results$Accuracy))
+best_brier    <- which(results$Brier == min(results$Brier))
+best_auc      <- which(results$AUC == max(results$AUC))
+
+
+results %>%
+  kable(caption = "Accuracy, Brier & AUC") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), 
+                full_width = FALSE, position = "center") %>%
+  column_spec(2, 
+              bold = 1:nrow(results) %in% best_accuracy,
+              background = ifelse(1:nrow(results) %in% best_accuracy, 
+                                  "#c6efce", "white")) %>%
+  column_spec(3, 
+              bold = 1:nrow(results) %in% best_brier,
+              background = ifelse(1:nrow(results) %in% best_brier, 
+                                  "#c6efce", "white")) %>%
+  column_spec(4, 
+              bold = 1:nrow(results) %in% best_auc,
+              background = ifelse(1:nrow(results) %in% best_auc, 
+                                  "#c6efce", "white"))
+```
+ROC Curves: 
+```{r}
+plot(roc_obj.tree, type = "s", col = "blue",main = "ROC Curves — Classification Models",xlab = "False Positive Rate (1 - Specificity)", ylab = "True Positive Rate (Sensitivity)")
+lines(roc_obj.rf, type = "s", col = "gold") 
+lines(roc_obj.boost, type = "s", col = "maroon") 
+lines(roc_obj.bart, type = "s", col = "purple")
+
+
+legend("bottomright",
+       legend = c("Tree","Random Forest", 'Boosting', 'BART'),
+       col = c("blue","gold", "maroon", "purple"),
+       lwd = 2,cex = 0.8)
+```
+Calibration Curves: 
+```{r}
+grid.arrange(
+  tree.calplot$ggPlot + ggtitle("Tree"),
+  rf.calplot$ggPlot + ggtitle("Random Forest"),
+  boost.calplot$ggPlot + ggtitle('Boosting'),
+  bart.calplot$ggPlot + ggtitle('BART'),
+  ncol = 3
+)
+
+cal.results <- data.frame(
+  Model = c("Tree", "Random Forest", 'Boosting', 'BART'),
+  Cal.Intercept = round(c(
+    tree.calplot$stats["Intercept"],
+    rf.calplot$stats["Intercept"],
+    boost.calplot$stats["Intercept"],
+    bart.calplot$stats["Intercept"]), 3),
+  Cal.Slope = round(c(
+    tree.calplot$stats["Slope"],
+    rf.calplot$stats["Slope"],
+    boost.calplot$stats["Slope"],
+    bart.calplot$stats["Slope"]), 3)
+)
+best_intercept <- which.min(abs(cal.results$Cal.Intercept - 0))
+best_slope <- which.min(abs(cal.results$Cal.Slope - 1)) 
+
+cal.results %>%
+  kable(caption = "Calibration")%>%
+   column_spec(2, bold = ifelse(1:nrow(cal.results) == best_intercept, TRUE, FALSE),
+              background = ifelse(1:nrow(cal.results) == best_intercept, "#c6efce", "white")) %>%
+  column_spec(3, bold = ifelse(1:nrow(cal.results) == best_slope, TRUE, FALSE),
+              background = ifelse(1:nrow(cal.results) == best_slope, "#c6efce", "white")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"),full_width = FALSE,      position = "center")
+```
+
+
+## Conclusion:
+```{r}
+results <- data.frame(
+  Model = c("Lasso", "LDA", 'Boosting'),  Accuracy = round(c(Accuracy.lasso, Accuracy.lda,boost.Accuracy), 3),
+  Brier = round(c(lasso_Brier, lda_Brier, boost_Brier), 3),
+  AUC = round(c(lasso.AUC, lda.AUC,boost.AUC), 3)
+)
+#To get the highlighted colours: %in% -this is important 
+best_accuracy <- which(results$Accuracy == max(results$Accuracy))
+best_brier    <- which(results$Brier == min(results$Brier))
+best_auc      <- which(results$AUC == max(results$AUC))
+
+
+results %>%
+  kable(caption = "Accuracy, Brier & AUC") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), 
+                full_width = FALSE, position = "center") %>%
+  column_spec(2, 
+              bold = 1:nrow(results) %in% best_accuracy,
+              background = ifelse(1:nrow(results) %in% best_accuracy, 
+                                  "#c6efce", "white")) %>%
+  column_spec(3, 
+              bold = 1:nrow(results) %in% best_brier,
+              background = ifelse(1:nrow(results) %in% best_brier, 
+                                  "#c6efce", "white")) %>%
+  column_spec(4, 
+              bold = 1:nrow(results) %in% best_auc,
+              background = ifelse(1:nrow(results) %in% best_auc, 
+                                  "#c6efce", "white"))
+```
+ROC Curves: 
+```{r}
+plot(roc_obj.lasso, type = "s", col = "blue",main = "ROC Curves — Classification Models",xlab = "False Positive Rate (1 - Specificity)", ylab = "True Positive Rate (Sensitivity)")
+lines(roc_obj.lda, type = "s", col = "gold") 
+lines(roc_obj.boost, type = "s", col = "maroon") 
+
+
+legend("bottomright",
+       legend = c("Lasso","LDA", 'Boosting'),
+       col = c("blue","gold", "maroon"),
+       lwd = 2,cex = 0.8)
+```
+Calibration Curves: 
+```{r}
+grid.arrange(
+  lasso.calplot$ggPlot + ggtitle("Lasso"),
+  lda.calplot$ggPlot + ggtitle("LDA"),
+  boost.calplot$ggPlot + ggtitle('Boosting'),
+  ncol = 3
+)
+
+cal.results <- data.frame(
+  Model = c("Lasso", "LDA", 'Boosting'),
+  Cal.Intercept = round(c(
+    lasso.calplot$stats["Intercept"],
+    lda.calplot$stats["Intercept"],
+    boost.calplot$stats["Intercept"]), 3),
+  Cal.Slope = round(c(
+    lasso.calplot$stats["Slope"],
+    lda.calplot$stats["Slope"],
+    boost.calplot$stats["Slope"]), 3)
+)
+best_intercept <- which.min(abs(cal.results$Cal.Intercept - 0))
+best_slope <- which.min(abs(cal.results$Cal.Slope - 1)) 
+
+cal.results %>%
+  kable(caption = "Calibration")%>%
+   column_spec(2, bold = ifelse(1:nrow(cal.results) == best_intercept, TRUE, FALSE),
+              background = ifelse(1:nrow(cal.results) == best_intercept, "#c6efce", "white")) %>%
+  column_spec(3, bold = ifelse(1:nrow(cal.results) == best_slope, TRUE, FALSE),
+              background = ifelse(1:nrow(cal.results) == best_slope, "#c6efce", "white")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"),full_width = FALSE,      position = "center")
+```
+
+## Best Predictors: 
+```{r}
+boost.importance <- summary(boost.fit, plotit = FALSE)
+
+ggplot(boost.importance[1:10, ],  
+       aes(x = reorder(var, rel.inf), y = rel.inf)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Top 10 Boosting Predictors",
+       x = "Variable",
+       y = "Relative Influence (%)") +
+  theme_minimal()
+
+Kept <- coef(cv.out, s = "lambda.min")
+predictors = Kept[Kept[,1] != 0, ] 
+
+predictors %>%
+  kable(caption = "Predictors Kept")%>%
+    kable_styling(bootstrap_options = c("striped", "hover"),full_width = FALSE,position = "center")
+```
+
+Clinical Usefullness:
+
+```{r}
+df_dca <- data.frame(
+  V2 = V2.test,
+  boost = as.vector(boost.probs)
+)
+
+dcurves::dca(
+  V2 ~ boost,
+  data = df_dca,
+  thresholds = seq(0, 1, 0.01),
+  label = list(BCWpred = "Boosting Model")
+)
+
+dca_results <- dcurves::dca(
+  V2 ~ boost,
+  data = df_dca,
+  as_probability = "boost",
+  thresholds = c(0.05, 0.35, 0.75)
+)
+
+dca_results %>%
+  as_tibble() %>%
+  select(label, threshold, net_benefit) %>%
+  gt::gt() %>%
+  gt::fmt_percent(columns = threshold, decimals = 0) %>%
+  gt::fmt(columns = net_benefit, fns = function(x) style_sigfig(x, digits = 3)) %>%
+  gt::cols_label(
+    label = "Strategy",
+    threshold = "Decision Threshold",
+    net_benefit = "Net Benefit"
+  ) %>%
+  gt::cols_align("left", columns = label)
+```
+
